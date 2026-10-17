@@ -44,7 +44,7 @@ models.
 
 ## Tasks
 
-- [ ] T1 — Backend companion: port, OpenAI-compatible adapter, companion service, output guard,
+- [x] T1 — Backend companion: port, OpenAI-compatible adapter, companion service, output guard,
   fallback, settings, tests. Route: delegated writer (several non-trivial files).
 - [ ] T2 — Mobile: backend client, chat wired to `/v1/messages`, crisis rendering, offline
   fallback, tests. Route: delegated writer (several non-trivial files).
@@ -68,7 +68,25 @@ lines across T1–T3. Remote: `origin` = github.com/Jaed69/puente-salud-mental (
 ## Progress
 
 - 2026-10-16: repository created on GitHub (private) and `main` pushed; branch created.
+- T1 done in commit `1caa084` (delegated writer).
+  - Added `puente/companion/` (port, OpenAI-compatible httpx adapter, service, factory), settings
+    `PUENTE_LLM_*`, an async endpoint, the guardian on input and output, a fixed fallback and a
+    bounded `history` (max 10).
+  - RED: `uv run pytest -q`: 4 collection errors (missing companion modules, `COMPANION_FALLBACK`).
+  - GREEN: `uv run pytest -q`: 114 passed. `uv run ruff check`: All checks passed!
+    `uv run ruff format --check`: 23 files already formatted.
+  - Parent spot check: `uv run pytest -q`: 114 passed.
+  - Risk: medium (configuration change, slice budget reached). Native review granted; lineage
+    `review-8d0c04b19e77ec8b` approved and acknowledged. Reviewed boundary is now `1caa084`.
+  - T3 backend docs are done in `apps/backend/README.md`.
+  - Pending: `apps/backend/.env.example` could not be written (permission settings deny the
+    write). The proposed content is in the T1 handoff.
+  - Follow-ups:
+    - Output-triggered crisis uses the output's categories, so a violence-only match shows the
+      violence script.
+    - httpx INFO logs include the request URL (for Cloudflare it contains the account id); no
+      body is logged.
 
 ## Next step
 
-T1 — backend companion.
+T2 — mobile wiring.
