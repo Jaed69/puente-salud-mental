@@ -85,3 +85,17 @@ def test_crisis_response_builder_failure_returns_static_crisis_payload(client, m
     assert body["resources"][0]["option"] == "5"
     assert "secreto-msg" not in caplog.text
     assert "secreto-builder" not in caplog.text
+
+
+def test_static_crisis_payload_matches_the_crisis_contract_and_canonical_resources():
+    from puente.api.messages import STATIC_CRISIS_PAYLOAD, CrisisOut
+    from puente.guardian.resources import COMMUNITY_MENTAL_HEALTH_NOTE, CRISIS_RESOURCES
+
+    payload = CrisisOut.model_validate(STATIC_CRISIS_PAYLOAD)
+    canonical = {resource.id: resource for resource in CRISIS_RESOURCES}
+
+    assert payload.resources[0].id == "minsa_113_5"
+    for resource in payload.resources:
+        assert resource == canonical[resource.id]
+    assert payload.note == COMMUNITY_MENTAL_HEALTH_NOTE
+    assert payload.model_dump(mode="json") == STATIC_CRISIS_PAYLOAD

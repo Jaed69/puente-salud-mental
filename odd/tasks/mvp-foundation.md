@@ -118,10 +118,14 @@ Strategy: ask-on-risk. Forecast ~600 authored lines across T2–T4; local reposi
   - `flutter pub get`: Got dependencies. `dart format .`: 7 files (3 changed) before final
     checks. `flutter analyze`: No issues found!
   - Not run: Android/iOS builds (no Android SDK on this machine; iOS needs macOS).
+- Review of T3 follow-up + T4: lineage `review-9ab45fe626dfabf6` approved and acknowledged with
+  one advisory (static crisis payload could drift from `CrisisOut`). Fixed with a contract test
+  that validates `STATIC_CRISIS_PAYLOAD` against `CrisisOut` and the canonical resources. The test
+  pins current behavior, so it passed on first run (no RED). `uv run pytest -q`: 69 passed;
+  `uv run ruff check`: All checks passed! Parent spot check: `flutter test`: 12 passed.
 
 ## Next step
 
 Wire the chat to the backend `/v1/messages` (crisis responses rendered with the SOS resources),
-then the next feature: LLM companion plus guardian layers 2–3. Independent verification of T3 and
-T4 (high tier) recommended before delivery. Confirm the pending crisis numbers before any real
-user.
+then the next feature: LLM companion plus guardian layers 2–3. Confirm the pending crisis numbers
+and have Peruvian clinicians review the lexicon before any real user.
