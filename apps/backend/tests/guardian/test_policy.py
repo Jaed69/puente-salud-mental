@@ -78,3 +78,15 @@ def test_crisis_response_never_contains_method_details():
     response = build_crisis_response(assess("ya tengo las pastillas"))
 
     assert "pastilla" not in response.message.lower()
+
+
+def test_crisis_response_for_violence_with_self_risk_uses_general_script():
+    decision = assess("me pegan y ya no quiero vivir")
+    assert {"violence", "suicidal_ideation"} <= set(decision.categories)
+
+    response = build_crisis_response(decision)
+
+    assert response.resources[0].number == "113"
+    assert response.resources[0].option == "5"
+    assert "opción 5" in response.message
+    assert response.message.startswith("Gracias por contármelo")

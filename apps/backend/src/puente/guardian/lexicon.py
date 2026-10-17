@@ -6,7 +6,9 @@ deliberately biased toward recall: a false positive shows crisis resources, a fa
 cost a life.
 
 Patterns run over normalized text (see ``normalize``): lowercase, no accents or diacritics (so
-"ñ" becomes "n"), punctuation replaced by spaces and whitespace collapsed.
+"ñ" becomes "n"), punctuation replaced by spaces and whitespace collapsed. ``detect`` matches
+both the whole message and each clause split at sentence boundaries, so a boundary after a
+phrase (e.g. "acabar con todo. La vida...") can never let a lookahead suppress detection.
 """
 
 import re
@@ -74,6 +76,8 @@ _COMPILED: dict[Category, tuple[re.Pattern[str], ...]] = {
 }
 
 _NON_WORD = re.compile(r"[^a-z0-9]+")
+# Sentence or clause boundaries, applied to the raw text before normalization erases them.
+_CLAUSE_BOUNDARY = re.compile(r"[.!?;:\n\r\u2026\u00a1\u00bf]+")
 
 
 def normalize(text: str) -> str:
@@ -84,12 +88,14 @@ def normalize(text: str) -> str:
 
 
 def detect(text: str) -> frozenset[Category]:
-    """Return every crisis category whose patterns match the message."""
+    """Return every crisis category whose patterns match the message or any of its clauses."""
     normalized = normalize(text)
     if not normalized:
         return frozenset()
+    clauses = {normalize(clause) for clause in _CLAUSE_BOUNDARY.split(text)}
+    candidates = ({normalized} | clauses) - {""}
     return frozenset(
         category
         for category, patterns in _COMPILED.items()
-        if any(p.search(normalized) for p in patterns)
+        if any(p.search(candidate) for p in patterns for candidate in candidates)
     )

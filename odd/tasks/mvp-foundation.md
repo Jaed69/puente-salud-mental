@@ -85,6 +85,21 @@ Strategy: ask-on-risk. Forecast ~600 authored lines across T2–T4; local reposi
     Línea 100 are marked pending confirmation. Lexicon is a seed list pending clinician review.
     Violence-only messages prioritize 105 and Línea 100; any self-risk category or a guardian
     error prioritizes 113 opción 5.
+- T3 review follow-up: review lineage `review-02f673ddef0a33d8` approved with 3 advisories, all
+  fixed in commit `fix(guardian): keep crisis detection across sentence boundaries and fail closed
+  when building the crisis response`. Risk tier: high (safety path).
+  - Advisory 1 (false negative): `detect` now also matches each clause split at sentence
+    boundaries (`. ! ? ; : … ¡ ¿` and newlines) on the raw text, so "acabar con todo. La vida..."
+    is detected while "acabar con todo el trabajo" still is not.
+  - Advisory 2: test pins that VIOLENCE plus a self-risk category uses the general script with
+    Línea 113 opción 5 first.
+  - Advisory 3: crisis response construction in `/v1/messages` fails closed to a static literal
+    payload (113 opción 5 and 106, type `crisis`); only the exception type is logged.
+  - RED: `uv run pytest -q` with the new tests: 10 failed, 58 passed (9 punctuation-separated
+    crisis statements, 1 builder-failure API test; the advisory 2 pin passes by design since it
+    fixes current behavior).
+  - GREEN: `uv run pytest -q`: 68 passed, 1 warning (Starlette `httpx` deprecation).
+  - `uv run ruff format`: 15 files left unchanged; `uv run ruff check`: All checks passed!
 
 ## Next step
 

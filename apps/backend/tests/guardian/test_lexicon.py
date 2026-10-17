@@ -84,3 +84,21 @@ def test_detects_violence_from_others(text):
 )
 def test_does_not_flag_common_figurative_or_neutral_phrases(text):
     assert detect(text) == frozenset()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Quiero acabar con todo. La vida no tiene sentido",
+        "Quiero acabar con todo. Lo he pensado",
+        "Quiero acabar con todo! Los demás estarían mejor",
+        "Quiero acabar con todo... la verdad ya no puedo",
+        "Quiero acabar con todo… la verdad ya no puedo",
+        "Quiero acabar con todo\nla vida no tiene sentido",
+        "Quiero acabar con todo; las cosas no mejoran",
+        "Quiero acabar con todo: lo decidí",
+        "¿Y si mejor acabar con todo? Las noches son eternas",
+    ],
+)
+def test_sentence_boundary_after_acabar_con_todo_never_suppresses_detection(text):
+    assert Category.SUICIDAL_IDEATION in detect(text)

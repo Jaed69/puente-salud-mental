@@ -62,3 +62,26 @@ def test_message_text_is_never_logged(client, caplog):
         client.post("/v1/messages", json={"text": "neutral secreto-unico-xyz"})
 
     assert "secreto-unico-xyz" not in caplog.text
+
+
+def test_crisis_response_builder_failure_returns_static_crisis_payload(client, monkeypatch, caplog):
+    from puente.api import messages
+
+    def boom(_decision):
+        raise RuntimeError("builder exploded secreto-builder")
+
+    monkeypatch.setattr(messages, "build_crisis_response", boom)
+
+    with caplog.at_level("DEBUG"):
+        response = client.post("/v1/messages", json={"text": "ya no quiero vivir secreto-msg"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["type"] == "crisis"
+    assert "113" in body["message"]
+    assert "opción 5" in body["message"]
+    assert "106" in body["message"]
+    assert body["resources"][0]["number"] == "113"
+    assert body["resources"][0]["option"] == "5"
+    assert "secreto-msg" not in caplog.text
+    assert "secreto-builder" not in caplog.text
