@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from puente.api.messages import router as messages_router
 from puente.config import Settings, get_settings
 
 
@@ -14,6 +15,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    app.include_router(messages_router)
     return app
 
 

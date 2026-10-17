@@ -47,7 +47,7 @@ tracking and PHQ-9/GAD-7, auth and consent, persistence of conversations, voice.
 
 - [x] T1 — Repository bootstrap. Route: inline (mechanical files).
 - [x] T2 — Backend skeleton (uv, FastAPI, pydantic-settings, `/health`, pytest + ruff). Route: delegated writer (multiple new files).
-- [ ] T3 — Guardian layer 1: crisis lexicon + fixed crisis response + fail-closed contract, test-first. Route: delegated writer.
+- [x] T3 — Guardian layer 1: crisis lexicon + fixed crisis response + fail-closed contract, test-first. Route: delegated writer.
 - [ ] T4 — Flutter skeleton: chat shell + offline SOS screen with Peru crisis lines. Blocked: Flutter SDK not installed on this machine.
 
 ## Acceptance criteria
@@ -71,7 +71,22 @@ Strategy: ask-on-risk. Forecast ~600 authored lines across T2–T4; local reposi
   - `uv sync`: resolved and installed (fastapi, uvicorn[standard], pydantic-settings, pytest, httpx, ruff).
   - `uv run pytest -q`: 2 passed, 1 warning (Starlette deprecation: `httpx` with TestClient).
   - `uv run ruff check`: All checks passed!
+- T2 commit: `71efeeb`.
+- T3: done. Risk tier: high (safety-critical crisis path). Commit:
+  `feat(guardian): add deterministic crisis lexicon with fail-closed policy and Peru crisis
+  resources` (hash: see commit log; a commit cannot contain its own hash). Test-first:
+  - RED: `uv run pytest -q` before implementation: 4 collection errors (guardian modules and
+    `/v1/messages` missing), 0 tests run.
+  - GREEN: `uv run pytest -q`: 57 passed, 1 warning (Starlette `httpx` deprecation).
+  - `uv run ruff format` applied before the final check; `uv run ruff check`: All checks passed!
+  - `uv sync`: 31 packages, up to date.
+  - Notes: crisis response adds a `note` field (CSMC without referral, gob.pe/10942) beyond
+    `type/message/resources`. Only Línea 113 opción 5 is `verified=True`; 106, 105, 116 and
+    Línea 100 are marked pending confirmation. Lexicon is a seed list pending clinician review.
+    Violence-only messages prioritize 105 and Línea 100; any self-risk category or a guardian
+    error prioritizes 113 opción 5.
 
 ## Next step
 
-T3 guardian layer 1 (test-first).
+T4 Flutter skeleton (blocked until the Flutter SDK is installed). Independent verification of T3
+(high tier) recommended before delivery.
