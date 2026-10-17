@@ -48,7 +48,7 @@ tracking and PHQ-9/GAD-7, auth and consent, persistence of conversations, voice.
 - [x] T1 — Repository bootstrap. Route: inline (mechanical files).
 - [x] T2 — Backend skeleton (uv, FastAPI, pydantic-settings, `/health`, pytest + ruff). Route: delegated writer (multiple new files).
 - [x] T3 — Guardian layer 1: crisis lexicon + fixed crisis response + fail-closed contract, test-first. Route: delegated writer.
-- [ ] T4 — Flutter skeleton: chat shell + offline SOS screen with Peru crisis lines. Blocked: Flutter SDK not installed on this machine.
+- [x] T4 — Flutter skeleton: chat shell + offline SOS screen with Peru crisis lines. Route: delegated writer (multiple new files).
 
 ## Acceptance criteria
 
@@ -100,8 +100,28 @@ Strategy: ask-on-risk. Forecast ~600 authored lines across T2–T4; local reposi
     fixes current behavior).
   - GREEN: `uv run pytest -q`: 68 passed, 1 warning (Starlette `httpx` deprecation).
   - `uv run ruff format`: 15 files left unchanged; `uv run ruff check`: All checks passed!
+- T4: done. Risk tier: high (SOS is a safety path). Commit: `feat(mobile): scaffold Flutter app
+  with chat shell and offline SOS screen` (hash: see commit log). Flutter 3.47.7 / Dart 3.13.5;
+  `flutter create --platforms android,ios,web`, plus `url_launcher`. ~660 authored lines in
+  `lib/`, `test/` and README (generated platform files excluded); over the 400 heuristic because
+  the tests cover every SOS acceptance case.
+  - `lib/features/sos/crisis_resources.dart` mirrors the backend resources (same order, ids and
+    `verified` flags; only 113 opción 5 verified; no WhatsApp). SOS opens from an AppBar action
+    "Ayuda ahora" with no network call; tap-to-call uses an injected `PhoneLauncher`
+    (`tel:113` for 113 opción 5, with "luego marca 5"); a failed or throwing launch shows the
+    number as `SelectableText` and a SnackBar.
+  - Chat shell appends the user message and a fixed local placeholder reply; blank input does
+    not send; disclaimer line visible.
+  - RED: `flutter test` before implementation: 2 test files failed to load (`PuenteApp`,
+    `SosScreen`, `crisisResources`, `ChatScreen` undefined), 0 tests passed.
+  - GREEN: `flutter test`: 12 passed (All tests passed!).
+  - `flutter pub get`: Got dependencies. `dart format .`: 7 files (3 changed) before final
+    checks. `flutter analyze`: No issues found!
+  - Not run: Android/iOS builds (no Android SDK on this machine; iOS needs macOS).
 
 ## Next step
 
-T4 Flutter skeleton (blocked until the Flutter SDK is installed). Independent verification of T3
-(high tier) recommended before delivery.
+Wire the chat to the backend `/v1/messages` (crisis responses rendered with the SOS resources),
+then the next feature: LLM companion plus guardian layers 2–3. Independent verification of T3 and
+T4 (high tier) recommended before delivery. Confirm the pending crisis numbers before any real
+user.
