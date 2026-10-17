@@ -46,9 +46,9 @@ models.
 
 - [x] T1 — Backend companion: port, OpenAI-compatible adapter, companion service, output guard,
   fallback, settings, tests. Route: delegated writer (several non-trivial files).
-- [ ] T2 — Mobile: backend client, chat wired to `/v1/messages`, crisis rendering, offline
+- [x] T2 — Mobile: backend client, chat wired to `/v1/messages`, crisis rendering, offline
   fallback, tests. Route: delegated writer (several non-trivial files).
-- [ ] T3 — Docs: provider setup (OpenRouter, Cloudflare Workers AI, others) and privacy caveat.
+- [ ] T3 — (done except `apps/backend/.env.example`, blocked by permission settings) Docs: provider setup (OpenRouter, Cloudflare Workers AI, others) and privacy caveat.
   Route: inline or folded into T1/T2 writers.
 
 ## Acceptance criteria
@@ -87,6 +87,28 @@ lines across T1–T3. Remote: `origin` = github.com/Jaed69/puente-salud-mental (
     - httpx INFO logs include the request URL (for Cloudflare it contains the account id); no
       body is logged.
 
+- T2 done in commit `ba964ec` (delegated writer).
+  - Added a `CompanionApi` HTTP client (`PUENTE_API_BASE_URL`, default `http://10.0.2.2:8000`,
+    30 s timeout, history bounded to 10, UTF-8 decoding from bytes).
+  - Added typed reply/crisis models and a crisis card with tap-to-call that opens SOS. A malformed
+    crisis payload falls back to the bundled crisis resources (fail closed).
+  - Added a loading state and an offline fallback message.
+  - Android: INTERNET permission in the main manifest; cleartext HTTP in the debug build only.
+  - Updated the mobile README.
+  - RED: `flutter test`: the 2 new chat test files failed to load; 9 SOS tests passed.
+  - GREEN: `flutter analyze`: No issues found! `flutter test`: 40 passed. `dart format .`: 0
+    changed.
+  - Parent spot check: `flutter test`: All tests passed (40).
+  - Risk: medium (executable change in the debug manifest, slice budget reached). Native review
+    granted; lineage `review-3daf7ac074f6cec9` approved and acknowledged. Reviewed boundary is now
+    `ba964ec`.
+  - Size: about 1,259 changed lines in the slice, roughly half of them tests (planning heuristic
+    only).
+  - Follow-ups:
+    - The backend has no CORS, so the Flutter web build always shows the fallback.
+    - A physical device needs the backend started with `--host 0.0.0.0`.
+
 ## Next step
 
-T2 — mobile wiring.
+Apply `apps/backend/.env.example` (needs user permission or a manual edit). Then push the branch
+and open a PR (the user decides), and start delivery 2: Postgres, Docker Compose and auth.
