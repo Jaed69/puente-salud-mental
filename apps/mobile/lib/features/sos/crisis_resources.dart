@@ -18,6 +18,7 @@ class CrisisResource {
     this.option,
     this.availability,
     this.free,
+    this.source,
   });
 
   final String id;
@@ -32,6 +33,9 @@ class CrisisResource {
   final String? availability;
   final bool? free;
   final bool verified;
+
+  /// Where the entry was confirmed, or why it is still pending.
+  final String? source;
 
   Uri get telUri => Uri(scheme: 'tel', path: number);
 }
@@ -82,7 +86,20 @@ const List<CrisisResource> crisisResources = [
   ),
 ];
 
+/// A short note shown with the crisis resources, with its source.
+class ResourceNote {
+  const ResourceNote({required this.text, required this.source});
+
+  final String text;
+  final String source;
+}
+
 /// Source: https://www.gob.pe/10942
 const String communityMentalHealthNote =
     'Si estás en riesgo de suicidio, puedes acudir directamente a un Centro '
     'de Salud Mental Comunitario, sin referencia.';
+
+const ResourceNote communityMentalHealthResourceNote = ResourceNote(
+  text: communityMentalHealthNote,
+  source: 'https://www.gob.pe/10942',
+);

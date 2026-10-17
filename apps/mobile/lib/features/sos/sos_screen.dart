@@ -8,6 +8,40 @@ typedef PhoneLauncher = Future<bool> Function(Uri uri);
 
 Future<bool> launchPhoneWithUrlLauncher(Uri uri) => launchUrl(uri);
 
+/// Opens the SOS screen. It works offline: it only uses bundled resources.
+Future<void> openSosScreen(BuildContext context, PhoneLauncher launchPhone) =>
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SosScreen(launchPhone: launchPhone),
+      ),
+    );
+
+/// Dials [resource]. When the call cannot be placed, shows a SnackBar telling
+/// the person which number (and option) to dial by hand, and returns false.
+Future<bool> callResource(
+  BuildContext context,
+  PhoneLauncher launchPhone,
+  CrisisResource resource,
+) async {
+  bool launched;
+  try {
+    launched = await launchPhone(resource.telUri);
+  } catch (_) {
+    launched = false;
+  }
+  if (launched || !context.mounted) return launched;
+  final option = resource.option == null ? '' : ' y luego ${resource.option}';
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        'No pudimos abrir el teléfono. Marca ${resource.number}$option '
+        'desde tu teléfono.',
+      ),
+    ),
+  );
+  return false;
+}
+
 /// AppBar action that opens the SOS screen. It never touches the network.
 class SosAction extends StatelessWidget {
   const SosAction({super.key, this.launchPhone = launchPhoneWithUrlLauncher});
@@ -26,11 +60,7 @@ class SosAction extends StatelessWidget {
         ),
         icon: const Icon(Icons.sos),
         label: const Text('Ayuda ahora'),
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => SosScreen(launchPhone: launchPhone),
-          ),
-        ),
+        onPressed: () => openSosScreen(context, launchPhone),
       ),
     );
   }
@@ -50,23 +80,9 @@ class _SosScreenState extends State<SosScreen> {
   final Set<String> _failed = {};
 
   Future<void> _call(CrisisResource resource) async {
-    bool launched;
-    try {
-      launched = await widget.launchPhone(resource.telUri);
-    } catch (_) {
-      launched = false;
-    }
+    final launched = await callResource(context, widget.launchPhone, resource);
     if (launched || !mounted) return;
     setState(() => _failed.add(resource.id));
-    final option = resource.option == null ? '' : ' y luego ${resource.option}';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'No pudimos abrir el teléfono. Marca ${resource.number}$option '
-          'desde tu teléfono.',
-        ),
-      ),
-    );
   }
 
   @override
@@ -83,7 +99,7 @@ class _SosScreenState extends State<SosScreen> {
           ),
           const SizedBox(height: 16),
           for (final resource in crisisResources)
-            _ResourceCard(
+            ResourceCard(
               resource: resource,
               showNumber: _failed.contains(resource.id),
               onCall: () => _call(resource),
@@ -104,14 +120,18 @@ class _SosScreenState extends State<SosScreen> {
   }
 }
 
-class _ResourceCard extends StatelessWidget {
-  const _ResourceCard({
+/// One crisis resource with its details and a tap-to-call button.
+class ResourceCard extends StatelessWidget {
+  const ResourceCard({
+    super.key,
     required this.resource,
     required this.showNumber,
     required this.onCall,
   });
 
   final CrisisResource resource;
+
+  /// Shows the number as selectable text, after a call could not be placed.
   final bool showNumber;
   final VoidCallback onCall;
 
