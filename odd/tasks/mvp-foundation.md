@@ -46,7 +46,7 @@ tracking and PHQ-9/GAD-7, auth and consent, persistence of conversations, voice.
 ## Tasks
 
 - [x] T1 — Repository bootstrap. Route: inline (mechanical files).
-- [ ] T2 — Backend skeleton (uv, FastAPI, pydantic-settings, `/health`, pytest + ruff). Route: delegated writer (multiple new files).
+- [x] T2 — Backend skeleton (uv, FastAPI, pydantic-settings, `/health`, pytest + ruff). Route: delegated writer (multiple new files).
 - [ ] T3 — Guardian layer 1: crisis lexicon + fixed crisis response + fail-closed contract, test-first. Route: delegated writer.
 - [ ] T4 — Flutter skeleton: chat shell + offline SOS screen with Peru crisis lines. Blocked: Flutter SDK not installed on this machine.
 
@@ -65,7 +65,13 @@ Strategy: ask-on-risk. Forecast ~600 authored lines across T2–T4; local reposi
 ## Progress
 
 - T1: done (see commit log).
+- T2: done. Risk tier: medium (new service scaffold, no user data). Commit:
+  `feat(backend): scaffold FastAPI service with settings and health endpoint` (hash recorded in
+  the T3 entry, since a commit cannot contain its own hash). Observed checks in `apps/backend`:
+  - `uv sync`: resolved and installed (fastapi, uvicorn[standard], pydantic-settings, pytest, httpx, ruff).
+  - `uv run pytest -q`: 2 passed, 1 warning (Starlette deprecation: `httpx` with TestClient).
+  - `uv run ruff check`: All checks passed!
 
 ## Next step
 
-T2 backend skeleton.
+T3 guardian layer 1 (test-first).
