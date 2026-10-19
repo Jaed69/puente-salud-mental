@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 
 import 'features/chat/chat_screen.dart';
+import 'features/chat/data/companion_api.dart';
 import 'features/sos/sos_screen.dart';
 
 class PuenteApp extends StatelessWidget {
-  const PuenteApp({super.key, this.launchPhone = launchPhoneWithUrlLauncher});
+  const PuenteApp({
+    super.key,
+    this.companionApi = const HttpCompanionApi(),
+    this.launchPhone = launchPhoneWithUrlLauncher,
+  });
+
+  /// Injected so tests never reach the network.
+  final CompanionApi companionApi;
 
   /// Injected so tests never reach the real `url_launcher` plugin.
   final PhoneLauncher launchPhone;
@@ -16,7 +24,7 @@ class PuenteApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
-      home: ChatScreen(launchPhone: launchPhone),
+      home: ChatScreen(companionApi: companionApi, launchPhone: launchPhone),
     );
   }
 }

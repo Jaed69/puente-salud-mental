@@ -1,23 +1,33 @@
 """Message endpoint: every message passes the guardian before anything else.
 
-Message text is sensitive personal data (Ley 29733): it is never logged.
+Flow: guardian on the input -> crisis response without calling the model, or the companion reply
+-> guardian on the model output (fail closed) -> reply. When the model is unavailable the endpoint
+serves a fixed, non-LLM fallback reply.
+
+Message text, history, prompts and model output are sensitive personal data (Ley 29733): they are
+never logged. Only exception type names are logged.
 """
 
 import logging
 from typing import Annotated, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
+from puente.companion.ports import ChatMessage, ChatModelPort
+from puente.companion.service import CompanionService
 from puente.guardian.policy import GuardDecision, build_crisis_response, safe_assess
 from puente.guardian.resources import CrisisResource, ResourceNote
 
 MAX_MESSAGE_LENGTH = 4000
+MAX_HISTORY_ITEMS = 10
 
-COMPANION_PLACEHOLDER = (
-    "Gracias por escribir. El acompañante conversacional todavía no está disponible. "
-    "Si en algún momento sientes que estás en peligro, llama gratis a la Línea 113, opción 5."
+# Fixed reply when the model is not configured, fails, times out or returns no text.
+COMPANION_FALLBACK = (
+    "Gracias por escribir. En este momento no puedo responderte como quisiera, pero tu mensaje "
+    "importa. Si en algún momento sientes que estás en peligro, llama gratis a la Línea 113, "
+    "opción 5, que atiende las 24 horas."
 )
 
 logger = logging.getLogger(__name__)
@@ -67,11 +77,20 @@ STATIC_CRISIS_PAYLOAD: dict[str, object] = {
 router = APIRouter(prefix="/v1")
 
 
+MessageText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_MESSAGE_LENGTH),
+]
+
+
+class HistoryItem(BaseModel):
+    role: Literal["user", "assistant"]
+    text: MessageText
+
+
 class MessageIn(BaseModel):
-    text: Annotated[
-        str,
-        StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_MESSAGE_LENGTH),
-    ]
+    text: MessageText
+    history: Annotated[tuple[HistoryItem, ...], Field(max_length=MAX_HISTORY_ITEMS)] = ()
 
 
 class CrisisOut(BaseModel):
@@ -86,12 +105,42 @@ class ReplyOut(BaseModel):
     message: str
 
 
+def get_chat_model(request: Request) -> ChatModelPort | None:
+    """The configured chat model, or ``None``. Tests override this dependency with a fake."""
+    return getattr(request.app.state, "chat_model", None)
+
+
 @router.post("/messages", response_model=CrisisOut | ReplyOut)
-def post_message(body: MessageIn) -> CrisisOut | ReplyOut | JSONResponse:
+async def post_message(
+    body: MessageIn,
+    request: Request,
+    chat_model: Annotated[ChatModelPort | None, Depends(get_chat_model)],
+) -> CrisisOut | ReplyOut | JSONResponse:
     decision = safe_assess(body.text)
     if decision.risk == "crisis":
         return _crisis_out(decision)
-    return ReplyOut(message=COMPANION_PLACEHOLDER)
+    if chat_model is None:
+        return ReplyOut(message=COMPANION_FALLBACK)
+
+    try:
+        companion = CompanionService(
+            chat_model, timeout_seconds=request.app.state.settings.llm_timeout_seconds
+        )
+        reply = await companion.reply(body.text, _history_messages(body.history))
+    except Exception as exc:
+        logger.warning("Companion unavailable (%s); serving fallback reply.", type(exc).__name__)
+        return ReplyOut(message=COMPANION_FALLBACK)
+
+    # Layer 1 on the model output too: a reply that trips the lexicon, or a failed check, is
+    # replaced by the fixed crisis response.
+    output_decision = safe_assess(reply)
+    if output_decision.risk == "crisis":
+        return _crisis_out(output_decision)
+    return ReplyOut(message=reply)
+
+
+def _history_messages(history: tuple[HistoryItem, ...]) -> list[ChatMessage]:
+    return [{"role": item.role, "content": item.text} for item in history]
 
 
 def _crisis_out(decision: GuardDecision) -> CrisisOut | JSONResponse:
