@@ -76,6 +76,8 @@ curl http://127.0.0.1:8000/ready # 503 "starting" until the embedding model is d
   the backend checks every citation. See `apps/backend/eval/reports/` for the retrieval
   evaluation.
 - Flutter app: chat, crisis card with tap-to-call, offline SOS screen.
+- MCP server (`puente-mcp`): the guardian, the crisis resources and the WHO guidance search as
+  tools for any MCP client and any model. See `apps/backend/README.md`.
 
 ## Layout
 

@@ -86,6 +86,50 @@ uv run puente-knowledge eval     # writes eval/reports/retrieval-<date>.md
 Latest run: `eval/reports/retrieval-2026-11-24.md` (hybrid jina-v2-base-es: Hit@5 0.82,
 MRR 0.618).
 
+## MCP server
+
+`puente-mcp` exposes Puente as tools over the Model Context Protocol (stdio), so any MCP client
+(Claude Desktop, Claude Code, Cursor, your own agent) can use them with its own model:
+
+| Tool | What it does |
+|------|--------------|
+| `check_message(text)` | Deterministic, offline crisis check of messages up to 100,000 characters. On a crisis it returns the fixed response with Peru crisis lines. |
+| `search_guidance(query, k=4)` | Hybrid search over the WHO guide (lay material only), with section, pages and attribution. The query is checked for crisis first; on a crisis no search runs. |
+| `crisis_resources()` | Peru crisis lines, each marked verified or pending. |
+
+The guardian tools work without a database. `search_guidance` needs the knowledge base (start it
+with `docker compose up -d db ingest` from the repository root) and connects on first use; the
+first call can take a while if the embedding model is not cached yet. After a failed connection,
+searches fail fast for 15 seconds before trying again; a missing `PUENTE_DATABASE_URL` is reported
+as a configuration error.
+
+Claude Code:
+
+```sh
+claude mcp add puente -e PUENTE_DATABASE_URL=postgresql://puente:puente-dev@127.0.0.1:5433/puente \
+  -- uv run --directory /path/to/puente-salud-mental/apps/backend puente-mcp
+```
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "puente": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/puente-salud-mental/apps/backend", "puente-mcp"],
+      "env": { "PUENTE_DATABASE_URL": "postgresql://puente:puente-dev@127.0.0.1:5433/puente" }
+    }
+  }
+}
+```
+
+Safety boundary: over MCP the client model decides when to call each tool, so the guardian is
+advisory. The server instructions tell the model to call `check_message` on every message, but
+only the Puente app (HTTP API) enforces the guardian on every turn. Use the MCP server for
+development and demos, not as a product for people in distress. The WHO material is
+CC BY-NC-SA 3.0 IGO: non-commercial use, with attribution.
+
 ## Test and lint
 
 ```sh
