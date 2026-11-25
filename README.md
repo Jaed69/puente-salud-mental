@@ -7,6 +7,37 @@ human (crisis lines, community mental-health centres, psychologists) when needed
 > Puente does not diagnose and is not a therapist. In a crisis in Peru, call **Línea 113, opción 5**
 > (MINSA, free, 24/7) or **106** (SAMU).
 
+[![CI](https://github.com/Jaed69/puente-salud-mental/actions/workflows/ci.yml/badge.svg)](https://github.com/Jaed69/puente-salud-mental/actions/workflows/ci.yml)
+
+## How a message flows
+
+```text
+message -> guardian (deterministic crisis check) --crisis--> Peru crisis lines, no LLM call
+              | safe
+              v
+         hybrid retrieval (pgvector HNSW + Spanish full-text, fused with RRF; local embeddings)
+              v
+         companion LLM, told to cite only the numbered references it was given
+              v
+         citation check (only retrieved chunks count) -> guardian on the reply -> reply + sources
+```
+
+## Retrieval results
+
+Measured on 60 Spanish questions labelled with the WHO guide's printed pages
+(`apps/backend/eval/reports/retrieval-2026-11-24.md`, reproducible with `puente-knowledge eval`):
+
+| Setup | Hit@1 | Hit@5 | MRR | p50 latency |
+|-------|-------|-------|-----|-------------|
+| jina-v2-base-es, hybrid (default) | 0.47 | 0.82 | 0.618 | 18 ms |
+| multilingual-e5-large, hybrid | 0.47 | 0.78 | 0.587 | 44 ms |
+| Spanish full-text only | 0.33 | 0.60 | 0.460 | 1 ms |
+
+Hybrid search beat dense-only search for each of the three embedding models tested. With 60
+questions, gaps of about 0.03 MRR are within noise; jina was chosen for being as good and smaller. Embeddings run
+locally, so no user message leaves the server for retrieval (Peru's Ley 29733 treats it as
+sensitive data).
+
 ## Architecture (target)
 
 - **App:** Flutter (text first, voice later).
