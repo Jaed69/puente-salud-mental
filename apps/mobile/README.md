@@ -48,7 +48,7 @@ flutter test
   models and the `CompanionApi` HTTP client (injected, so tests use a fake and never hit the
   network). A malformed crisis response fails closed to the bundled resources. A grounded reply
   shows the sections it is based on ("Basado en:") and the licence attribution of each source;
-  malformed sources are dropped and the reply is still shown.
+  a malformed source is dropped on its own, and the reply and the other sources are still shown.
 - `lib/features/sos/`: SOS screen and the bundled Peru crisis resources.
 
 ## Safety notes

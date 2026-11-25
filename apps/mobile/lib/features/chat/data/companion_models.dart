@@ -116,14 +116,19 @@ final class CompanionCrisis extends CompanionResponse {
   final ResourceNote note;
 }
 
-/// Sources are optional: when malformed they are dropped, never the reply.
+/// Sources are optional: a malformed source is dropped on its own, and
+/// never the reply or the other sources.
 List<ReplySource> _parseSources(Object? raw) {
   if (raw is! List) return const [];
-  try {
-    return [for (final item in raw) _parseSource(item)];
-  } on FormatException {
-    return const [];
+  final sources = <ReplySource>[];
+  for (final item in raw) {
+    try {
+      sources.add(_parseSource(item));
+    } on FormatException {
+      continue;
+    }
   }
+  return sources;
 }
 
 ReplySource _parseSource(Object? raw) {

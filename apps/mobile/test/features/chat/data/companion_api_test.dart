@@ -84,6 +84,28 @@ void main() {
       expect(reply.sources.single.attribution, contains('CC BY-NC-SA'));
     });
 
+    test('a malformed source is dropped and the valid ones are kept', () {
+      final response = CompanionResponse.fromJson({
+        'type': 'reply',
+        'message': 'Te escucho.',
+        'sources': [
+          {'section_title': 'Sin url ni páginas'},
+          {
+            'source_title': 'Guía',
+            'section_title': 'Parte 2: Desengancharse',
+            'pages': '65-67',
+            'attribution': 'OMS; 2020.',
+            'url': 'https://www.who.int/guia.pdf',
+          },
+        ],
+      });
+
+      final reply = response as CompanionReply;
+      expect(reply.sources.map((s) => s.sectionTitle), [
+        'Parte 2: Desengancharse',
+      ]);
+    });
+
     test('a reply with malformed sources keeps its message', () {
       for (final sources in [
         'texto',
