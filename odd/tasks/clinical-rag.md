@@ -24,11 +24,11 @@ Assumption (L1 "con todo lo necesario"): "complete app" is read as this RAG feat
 | T1 | S1 | inline | done | `eccbaf9`. RED: collection error, then the ligature test failed; GREEN: 11 passed. Review assess: medium, under_budget |
 | T2 | S2, S8 | inline | done | `d718ac9`. RED: 2 of 10 integration tests failed (double stemming in `to_tsquery`; fixed with a `::tsquery` cast); GREEN: 26 passed against Postgres |
 | T3 | S3 | inline | done | `d718ac9`. RED: 3 of 8 failed (e5 prefixes missing in fastembed); GREEN: 8 passed. All 3 models ingested (58 chunks each). Review assess: medium, under_budget (2,274 lines incl. lockfile) |
-| T4 | S4 | inline | done (review pending) | `a27961e`. RED: collection errors, then 2 of 3 readiness tests failed; GREEN: 161 passed (11 skipped) without DB, 172 with DB. Risk: item 2 (guarded flow), escalated; review due |
-| T5 | S5 | inline | pending | |
-| T6 | S6 | inline | pending | |
-| T7 | S7 | pending decision (Flutter missing) | pending | |
-| T8 | S8 | inline | pending | |
+| T4 | S4 | inline | done | `a27961e` + follow-ups `8417325`. RED: collection errors, then 2 of 3 readiness tests failed; GREEN: 166 passed without DB, 177 with DB. Risk: item 2 (guarded flow), escalated. Review `review-d4c258cc1d7f5964` granted, approved (risk, resilience, reliability) and acknowledged; advisory findings fixed in `8417325` |
+| T5 | S5 | inline | done | `6302328`. RED: collection error, then 1 failed (a test filter bug, fixed); default-model test RED then GREEN. Report: `apps/backend/eval/reports/retrieval-2026-11-24.md`; winner: jina-v2-base-es hybrid, Hit@5 0.82, MRR 0.618 |
+| T6 | S6 | inline | done | `0cfab1f` + `a64b566`. Verified: compose up, ingest exit 0, /ready 503 then 200, reply and crisis answered by the container; with db stopped, crisis and reply still answered. Risk: item 5. Review granted, approved (risk, resilience), acknowledged; advisories fixed in `a64b566` |
+| T7 | S7 | inline | written, NOT verified (uncommitted) | `ghcr.io/cirruslabs/flutter:stable` ships Flutter 3.44 / Dart 3.12; pubspec needs Dart ^3.13.5 (Flutter >= 3.50.1), so tests could not run. Needs the user decision |
+| T8 | S8 | inline | done (not run on GitHub yet) | `5632df9` + `a64b566` (actions pinned to SHAs). It runs on the first push or PR, which is the user's decision |
 
 Route evidence: one dependent chain (corpus → store → retrieval → companion → eval), no independent parallel units, so the parent writes inline (no Writer trigger).
 
@@ -42,3 +42,6 @@ Route evidence: one dependent chain (corpus → store → retrieval → companio
 - L6 Next: T4 grounded replies in the companion and API, then T5 evaluation to pick the default model and mode.
 - L7 Engram mirror pending: the session is bound to project `linkedin-post-skill` and refuses writes to `puente-salud-mental` (`session_project_mismatch`). The local document is the source of truth until it syncs.
 - L8 T4 decisions: references are appended to the unchanged system prompt as `[n]` entries; citations are numbered per reply instead of using raw chunk ids, which small models mangle less. The ungrounded response shape is unchanged (empty `sources` is omitted). New `GET /ready`; `/health` is unchanged.
+- L9 E2E (real Postgres, real jina embeddings, fake LLM that cites [1]): "me hablo horrible a mí misma, me digo que soy una inútil" retrieved Ser amable (pág. 125, págs. 100-102, 102-104) and Desengancharse (65-67). The reply came back clean with one source; a crisis message never called the model. API access logs carry paths only.
+- L10 User decisions (2026-11-24, via question prompts): granted both native reviews; chose the Flutter Docker image (2.28 GB) to verify the mobile work.
+- L11 Pending slice: `8417325` and `6302328` were assessed medium/under_budget and are not reviewed yet.
