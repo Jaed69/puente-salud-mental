@@ -18,10 +18,17 @@ sealed class ChatEntry {
 
 /// A user message or a companion reply, rendered as a bubble.
 class ChatMessage extends ChatEntry {
-  const ChatMessage({required this.text, required this.fromUser});
+  const ChatMessage({
+    required this.text,
+    required this.fromUser,
+    this.sources = const [],
+  });
 
   final String text;
   final bool fromUser;
+
+  /// Sources of a grounded companion reply; never sent back as history.
+  final List<ReplySource> sources;
 }
 
 /// A crisis response, rendered as a [CrisisCard].
@@ -106,9 +113,10 @@ class _ChatScreenState extends State<ChatScreen> {
         history: history,
       );
       answer = switch (response) {
-        CompanionReply(:final message) => ChatMessage(
+        CompanionReply(:final message, :final sources) => ChatMessage(
           text: message,
           fromUser: false,
+          sources: sources,
         ),
         CompanionCrisis crisis => CrisisEntry(crisis),
       };
@@ -233,13 +241,54 @@ class MessageBubble extends StatelessWidget {
               : colors.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Text(
-          message.text,
-          style: TextStyle(
-            color: fromUser ? colors.onPrimaryContainer : colors.onSurface,
-          ),
-        ),
+        child: message.sources.isEmpty
+            ? _text(colors)
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _text(colors),
+                  const SizedBox(height: 8),
+                  SourcesBlock(sources: message.sources),
+                ],
+              ),
       ),
+    );
+  }
+
+  Widget _text(ColorScheme colors) => Text(
+    message.text,
+    style: TextStyle(
+      color: message.fromUser ? colors.onPrimaryContainer : colors.onSurface,
+    ),
+  );
+}
+
+/// The sections a reply is based on, with the licence attribution of each
+/// source document (required by CC BY-NC-SA).
+class SourcesBlock extends StatelessWidget {
+  const SourcesBlock({super.key, required this.sources});
+
+  final List<ReplySource> sources;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final small = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final attributions = {for (final source in sources) source.attribution};
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Basado en:', style: small?.copyWith(fontWeight: FontWeight.w600)),
+        for (final source in sources) Text(source.label, style: small),
+        const SizedBox(height: 4),
+        for (final attribution in attributions)
+          Text(
+            attribution,
+            style: small?.copyWith(fontStyle: FontStyle.italic),
+          ),
+      ],
     );
   }
 }

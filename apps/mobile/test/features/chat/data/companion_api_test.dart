@@ -59,6 +59,48 @@ void main() {
 
       expect(response, isA<CompanionReply>());
       expect(response.message, 'Te escucho.');
+      expect((response as CompanionReply).sources, isEmpty);
+    });
+
+    test('parses the sources of a grounded reply', () {
+      final response = CompanionResponse.fromJson({
+        'type': 'reply',
+        'message': 'Intenta hablarte como a una amiga.',
+        'sources': [
+          {
+            'source_title': 'En tiempos de estrés, haz lo que importa',
+            'section_title': 'Parte 4: Ser amable',
+            'pages': '100-102',
+            'attribution': 'OMS; 2020. Licencia: CC BY-NC-SA 3.0 IGO.',
+            'url': 'https://www.who.int/guia.pdf',
+          },
+        ],
+      });
+
+      final reply = response as CompanionReply;
+      expect(reply.message, 'Intenta hablarte como a una amiga.');
+      expect(reply.sources.single.sectionTitle, 'Parte 4: Ser amable');
+      expect(reply.sources.single.pages, '100-102');
+      expect(reply.sources.single.attribution, contains('CC BY-NC-SA'));
+    });
+
+    test('a reply with malformed sources keeps its message', () {
+      for (final sources in [
+        'texto',
+        [42],
+        [
+          {'section_title': 'Sin páginas'},
+        ],
+      ]) {
+        final response = CompanionResponse.fromJson({
+          'type': 'reply',
+          'message': 'Te escucho.',
+          'sources': sources,
+        });
+
+        expect(response.message, 'Te escucho.');
+        expect((response as CompanionReply).sources, isEmpty);
+      }
     });
 
     test('parses a crisis with its resources and note', () {

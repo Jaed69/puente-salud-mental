@@ -51,7 +51,10 @@ sealed class CompanionResponse {
       throw const FormatException('Response is not a JSON object.');
     }
     return switch (json['type']) {
-      'reply' => CompanionReply(_requireText(json['message'])),
+      'reply' => CompanionReply(
+        _requireText(json['message']),
+        sources: _parseSources(json['sources']),
+      ),
       'crisis' => _parseCrisis(json),
       _ => throw const FormatException('Unknown response type.'),
     };
@@ -59,10 +62,38 @@ sealed class CompanionResponse {
 }
 
 final class CompanionReply extends CompanionResponse {
-  const CompanionReply(this.message);
+  const CompanionReply(this.message, {this.sources = const []});
 
   @override
   final String message;
+
+  /// Reference material the reply is based on; empty for ungrounded replies.
+  final List<ReplySource> sources;
+}
+
+/// Licensed lay material a reply cites (for example, a WHO guide section).
+class ReplySource {
+  const ReplySource({
+    required this.sourceTitle,
+    required this.sectionTitle,
+    required this.pages,
+    required this.attribution,
+    required this.url,
+  });
+
+  final String sourceTitle;
+  final String sectionTitle;
+
+  /// Printed pages, such as "125" or "100-102".
+  final String pages;
+
+  /// Licence attribution that must be shown with the material.
+  final String attribution;
+  final String url;
+
+  /// "Parte 4: Ser amable, págs. 100-102" or "..., pág. 125".
+  String get label =>
+      '$sectionTitle, ${pages.contains('-') ? 'págs.' : 'pág.'} $pages';
 }
 
 final class CompanionCrisis extends CompanionResponse {
@@ -83,6 +114,29 @@ final class CompanionCrisis extends CompanionResponse {
   final String message;
   final List<CrisisResource> resources;
   final ResourceNote note;
+}
+
+/// Sources are optional: when malformed they are dropped, never the reply.
+List<ReplySource> _parseSources(Object? raw) {
+  if (raw is! List) return const [];
+  try {
+    return [for (final item in raw) _parseSource(item)];
+  } on FormatException {
+    return const [];
+  }
+}
+
+ReplySource _parseSource(Object? raw) {
+  if (raw is! Map<String, Object?>) {
+    throw const FormatException('Source is not a JSON object.');
+  }
+  return ReplySource(
+    sourceTitle: _requireText(raw['source_title']),
+    sectionTitle: _requireText(raw['section_title']),
+    pages: _requireText(raw['pages']),
+    attribution: _requireText(raw['attribution']),
+    url: _requireText(raw['url']),
+  );
 }
 
 CompanionCrisis _parseCrisis(Map<String, Object?> json) {

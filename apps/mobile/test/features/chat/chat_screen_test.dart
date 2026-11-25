@@ -113,6 +113,46 @@ void main() {
     expect(field.controller!.text, isEmpty);
   });
 
+  testWidgets('shows the sources and attribution under a grounded reply', (
+    tester,
+  ) async {
+    const source = ReplySource(
+      sourceTitle: 'En tiempos de estrés, haz lo que importa',
+      sectionTitle: 'Parte 4: Ser amable',
+      pages: '100-102',
+      attribution: 'OMS; 2020. Licencia: CC BY-NC-SA 3.0 IGO.',
+      url: 'https://www.who.int/guia.pdf',
+    );
+    final api = FakeCompanionApi(
+      (_, _) async => const CompanionReply(
+        'Intenta hablarte como a una amiga.',
+        sources: [source],
+      ),
+    );
+    await pumpChat(tester, api);
+
+    await sendText(tester, 'Me hablo muy feo');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Intenta hablarte como a una amiga.'), findsOneWidget);
+    expect(find.text('Basado en:'), findsOneWidget);
+    expect(find.text('Parte 4: Ser amable, págs. 100-102'), findsOneWidget);
+    expect(
+      find.text('OMS; 2020. Licencia: CC BY-NC-SA 3.0 IGO.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a reply without sources shows no sources block', (tester) async {
+    await pumpChat(tester, FakeCompanionApi.replying('Te escucho.'));
+
+    await sendText(tester, 'Hola');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Te escucho.'), findsOneWidget);
+    expect(find.text('Basado en:'), findsNothing);
+  });
+
   testWidgets('empty or blank input does not send', (tester) async {
     final api = FakeCompanionApi.replying('Hola');
     await pumpChat(tester, api);

@@ -46,7 +46,9 @@ flutter test
 - `lib/app.dart`: `MaterialApp` and theme.
 - `lib/features/chat/`: chat screen and crisis card. `data/` holds the typed `/v1/messages`
   models and the `CompanionApi` HTTP client (injected, so tests use a fake and never hit the
-  network). A malformed crisis response fails closed to the bundled resources.
+  network). A malformed crisis response fails closed to the bundled resources. A grounded reply
+  shows the sections it is based on ("Basado en:") and the licence attribution of each source;
+  malformed sources are dropped and the reply is still shown.
 - `lib/features/sos/`: SOS screen and the bundled Peru crisis resources.
 
 ## Safety notes
