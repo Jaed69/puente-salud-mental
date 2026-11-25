@@ -162,7 +162,7 @@ async def test_a_failed_connection_is_retried_on_the_next_search():
             raise ConnectionError("not yet")
         return FakeRetriever()
 
-    async with Client(create_server(flaky)) as client:
+    async with Client(create_server(flaky, retry_after_seconds=0.0)) as client:
         first = await client.call_tool("search_guidance", {"query": "estrés"})
         second = await client.call_tool("search_guidance", {"query": "estrés"})
 
@@ -187,3 +187,107 @@ async def test_server_instructions_tell_the_model_to_check_every_message():
 
     assert "check_message" in instructions
     assert "every" in instructions
+
+
+async def test_check_message_assesses_long_messages_instead_of_rejecting_them():
+    text = "hoy fue un día muy pesado en el trabajo. " * 150 + "ya no quiero vivir"
+    assert len(text) > 4000
+
+    result = await call(
+        create_server(factory_for(FakeRetriever())), "check_message", {"text": text}
+    )
+
+    assert not result.is_error
+    assert result.structured_content["risk"] == "crisis"
+
+
+async def test_after_a_failure_searches_fail_fast_until_the_cooldown_ends():
+    attempts = []
+    now = [100.0]
+
+    async def failing():
+        attempts.append(1)
+        raise ConnectionError("db down")
+
+    server = create_server(failing, retry_after_seconds=30.0, clock=lambda: now[0])
+    async with Client(server) as client:
+        first = await client.call_tool("search_guidance", {"query": "estrés"})
+        second = await client.call_tool("search_guidance", {"query": "estrés"})
+        now[0] += 31.0
+        third = await client.call_tool("search_guidance", {"query": "estrés"})
+
+    assert first.is_error and second.is_error and third.is_error
+    assert len(attempts) == 2
+
+
+async def test_a_missing_database_url_is_reported_as_configuration():
+    from puente.config import Settings
+    from puente.mcp_server import settings_factory
+
+    server = create_server(settings_factory(Settings(_env_file=None), []))
+    result = await call(server, "search_guidance", {"query": "estrés"})
+
+    assert result.is_error
+    assert "PUENTE_DATABASE_URL" in result.content[0].text
+
+
+async def test_settings_factory_closes_the_pool_when_the_embedder_fails(monkeypatch):
+    from puente.config import Settings
+    from puente.knowledge import embeddings, store
+    from puente.mcp_server import settings_factory
+
+    class FakePool:
+        closed = False
+
+        async def close(self):
+            self.closed = True
+
+    pool = FakePool()
+
+    async def fake_open_pool(conninfo, *, timeout):
+        return pool
+
+    class FailingEmbedder:
+        def __init__(self, spec, *, cache_dir):
+            pass
+
+        async def warm_up(self):
+            raise OSError("model download failed")
+
+    monkeypatch.setattr(store, "open_pool", fake_open_pool)
+    monkeypatch.setattr(embeddings, "FastEmbedEmbedder", FailingEmbedder)
+    pools = []
+    factory = settings_factory(Settings(_env_file=None, database_url="postgresql://x@h/db"), pools)
+
+    with pytest.raises(OSError):
+        await factory()
+
+    assert pool.closed
+    assert pools == []
+
+
+async def test_settings_factory_keeps_the_pool_on_success(monkeypatch):
+    from puente.config import Settings
+    from puente.knowledge import embeddings, store
+    from puente.knowledge.retriever import KnowledgeRetriever
+    from puente.mcp_server import settings_factory
+
+    pool = object()
+
+    async def fake_open_pool(conninfo, *, timeout):
+        return pool
+
+    class StubEmbedder:
+        def __init__(self, spec, *, cache_dir):
+            pass
+
+        async def warm_up(self):
+            return None
+
+    monkeypatch.setattr(store, "open_pool", fake_open_pool)
+    monkeypatch.setattr(embeddings, "FastEmbedEmbedder", StubEmbedder)
+    pools = []
+    factory = settings_factory(Settings(_env_file=None, database_url="postgresql://x@h/db"), pools)
+
+    assert isinstance(await factory(), KnowledgeRetriever)
+    assert pools == [pool]

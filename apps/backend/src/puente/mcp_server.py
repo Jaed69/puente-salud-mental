@@ -13,6 +13,7 @@ Message text is sensitive personal data (Peru Ley 29733): nothing here logs it.
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Annotated, Any, Literal
@@ -36,13 +37,24 @@ from puente.knowledge.ports import RetrieverPort
 logger = logging.getLogger(__name__)
 
 MAX_TEXT_LENGTH = 4000
+# The guardian assesses long messages instead of rejecting them; the bound only caps the work.
+MAX_CHECK_LENGTH = 100_000
 MAX_RESULTS = 10
+RETRY_AFTER_SECONDS = 15.0
 
 RetrieverFactory = Callable[[], Awaitable[RetrieverPort]]
 
 Text = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_TEXT_LENGTH)
 ]
+CheckText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_CHECK_LENGTH)
+]
+
+
+class KnowledgeNotConfiguredError(RuntimeError):
+    """The knowledge base cannot connect because a setting is missing."""
+
 
 INSTRUCTIONS = """\
 Puente supports Spanish-speaking people in Peru who feel stressed or low. It does not diagnose
@@ -96,18 +108,42 @@ class CrisisResources(BaseModel):
 class LazyRetriever:
     """Connects on first use, so the guardian tools work even when the database is down.
 
-    A failed connection is not cached: the next search tries again.
+    After a failed connection, searches fail fast for ``retry_after_seconds`` instead of paying
+    the connection timeout again; the first search after that tries to connect again.
     """
 
-    def __init__(self, factory: RetrieverFactory) -> None:
+    def __init__(
+        self,
+        factory: RetrieverFactory,
+        *,
+        retry_after_seconds: float = RETRY_AFTER_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._factory = factory
+        self._retry_after = retry_after_seconds
+        self._clock = clock
         self._retriever: RetrieverPort | None = None
+        self._failed_at: float | None = None
+        self._last_error: Exception | None = None
         self._lock = asyncio.Lock()
 
     async def get(self) -> RetrieverPort:
         async with self._lock:
-            if self._retriever is None:
+            if self._retriever is not None:
+                return self._retriever
+            if (
+                self._failed_at is not None
+                and self._last_error is not None
+                and self._clock() - self._failed_at < self._retry_after
+            ):
+                raise self._last_error
+            try:
                 self._retriever = await self._factory()
+            except Exception as exc:
+                self._failed_at = self._clock()
+                self._last_error = exc
+                raise
+            self._failed_at = self._last_error = None
             return self._retriever
 
 
@@ -126,9 +162,13 @@ def create_server(
     retriever_factory: RetrieverFactory,
     *,
     lifespan: Callable[[MCPServer[Any]], Any] | None = None,
+    retry_after_seconds: float = RETRY_AFTER_SECONDS,
+    clock: Callable[[], float] = time.monotonic,
 ) -> MCPServer[Any]:
     """Build the Puente MCP server. ``retriever_factory`` connects the knowledge base."""
-    retriever = LazyRetriever(retriever_factory)
+    retriever = LazyRetriever(
+        retriever_factory, retry_after_seconds=retry_after_seconds, clock=clock
+    )
     server: MCPServer[Any] = MCPServer(
         name="puente",
         title="Puente: mental health first-barrier tools for Peru",
@@ -137,7 +177,7 @@ def create_server(
     )
 
     @server.tool(annotations=READ_ONLY)
-    def check_message(text: Text) -> MessageCheck:
+    def check_message(text: CheckText) -> MessageCheck:
         """Check a person's message for crisis signals (suicide, self-harm, violence).
 
         Deterministic and offline. Call it on every message before answering. When risk is
@@ -161,6 +201,8 @@ def create_server(
             )
         try:
             chunks = await (await retriever.get()).retrieve(query, k)
+        except KnowledgeNotConfiguredError as exc:
+            raise ToolError(f"The knowledge base is not configured: {exc}.") from None
         except Exception as exc:
             logger.warning("Guidance search failed (%s).", type(exc).__name__)
             raise ToolError("The knowledge base is unavailable; try again later.") from None
@@ -192,7 +234,7 @@ def create_server(
     return server
 
 
-def _settings_factory(settings: Settings, pools: list[Any]) -> RetrieverFactory:
+def settings_factory(settings: Settings, pools: list[Any]) -> RetrieverFactory:
     """Connect the knowledge base from settings, like the HTTP API does."""
 
     async def factory() -> RetrieverPort:
@@ -202,7 +244,7 @@ def _settings_factory(settings: Settings, pools: list[Any]) -> RetrieverFactory:
         from puente.knowledge.store import PgKnowledgeStore, open_pool
 
         if settings.database_url is None:
-            raise RuntimeError("PUENTE_DATABASE_URL is not set")
+            raise KnowledgeNotConfiguredError("set PUENTE_DATABASE_URL")
         pool = await open_pool(
             settings.database_url.get_secret_value(), timeout=settings.database_connect_timeout
         )
@@ -235,7 +277,7 @@ def main() -> None:
             for pool in pools:
                 await pool.close()
 
-    create_server(_settings_factory(settings, pools), lifespan=lifespan).run("stdio")
+    create_server(settings_factory(settings, pools), lifespan=lifespan).run("stdio")
 
 
 if __name__ == "__main__":

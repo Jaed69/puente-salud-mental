@@ -93,13 +93,15 @@ MRR 0.618).
 
 | Tool | What it does |
 |------|--------------|
-| `check_message(text)` | Deterministic, offline crisis check. On a crisis it returns the fixed response with Peru crisis lines. |
+| `check_message(text)` | Deterministic, offline crisis check of messages up to 100,000 characters. On a crisis it returns the fixed response with Peru crisis lines. |
 | `search_guidance(query, k=4)` | Hybrid search over the WHO guide (lay material only), with section, pages and attribution. The query is checked for crisis first; on a crisis no search runs. |
 | `crisis_resources()` | Peru crisis lines, each marked verified or pending. |
 
 The guardian tools work without a database. `search_guidance` needs the knowledge base (start it
 with `docker compose up -d db ingest` from the repository root) and connects on first use; the
-first call can take a while if the embedding model is not cached yet.
+first call can take a while if the embedding model is not cached yet. After a failed connection,
+searches fail fast for 15 seconds before trying again; a missing `PUENTE_DATABASE_URL` is reported
+as a configuration error.
 
 Claude Code:
 
