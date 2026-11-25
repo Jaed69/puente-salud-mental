@@ -24,8 +24,11 @@ docker compose up -d --build     # db + one-shot knowledge ingestion + API
 curl http://127.0.0.1:8000/ready # 503 "starting" until the embedding model is downloaded
 ```
 
-- The API listens on `http://127.0.0.1:8000` (`POST /v1/messages`). Set `PUENTE_API_BIND=0.0.0.0`
-  to reach it from a phone on the same network.
+- The API listens on `http://127.0.0.1:8000` (`POST /v1/messages`). `PUENTE_API_BIND=0.0.0.0`
+  exposes it to the local network for a phone in development. The API has no authentication yet,
+  so use it only on a trusted network and with synthetic conversations.
+- The API starts without waiting for the database or the ingestion, so the guardian and the
+  crisis response always work. Grounding starts once `ingest` has loaded the chunks.
 - To get real replies, configure the companion model in `apps/backend/.env` (see
   `apps/backend/README.md`). Without it the API serves a fixed fallback reply. The guardian and
   the crisis response work either way.

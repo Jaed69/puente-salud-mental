@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
     PUENTE_EMBEDDING_CACHE_DIR=/models
 
-COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.9@sha256:538e0b39736e7feae937a65983e49d2ab75e1559d35041f9878b7b7e51de91e4 /uv /usr/local/bin/uv
 
 WORKDIR /app
 
