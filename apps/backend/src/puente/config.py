@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # Knowledge base (PostgreSQL + pgvector). Without a database URL the companion answers without
     # reference material. Embeddings always run locally (see puente.knowledge.embeddings).
     database_url: SecretStr | None = None
+    database_connect_timeout: float = Field(default=10.0, gt=0)
     embedding_model: str = "intfloat/multilingual-e5-large"
     embedding_cache_dir: str | None = None
     retrieval_mode: Literal["dense", "lexical", "hybrid"] = "hybrid"

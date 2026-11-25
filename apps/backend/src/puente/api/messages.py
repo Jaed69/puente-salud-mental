@@ -1,24 +1,28 @@
 """Message endpoint: every message passes the guardian before anything else.
 
-Flow: guardian on the input -> crisis response without calling the model, or the companion reply
--> guardian on the model output (fail closed) -> reply. When the model is unavailable the endpoint
-serves a fixed, non-LLM fallback reply.
+Flow: guardian on the input -> crisis response without calling the model or retrieval, or
+retrieval of reference material -> the companion reply -> citation check -> guardian on the model
+output (fail closed) -> reply. When the model is unavailable the endpoint serves a fixed, non-LLM
+fallback reply. When retrieval fails or times out, the companion answers without references.
 
 Message text, history, prompts and model output are sensitive personal data (Ley 29733): they are
 never logged. Only exception type names are logged.
 """
 
+import asyncio
 import logging
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints, model_serializer
 
+from puente.companion.grounding import format_pages, resolve_citations
 from puente.companion.ports import ChatMessage, ChatModelPort
 from puente.companion.service import CompanionService
 from puente.guardian.policy import GuardDecision, build_crisis_response, safe_assess
 from puente.guardian.resources import CrisisResource, ResourceNote
+from puente.knowledge.ports import RetrievedChunk, RetrieverPort
 
 MAX_MESSAGE_LENGTH = 4000
 MAX_HISTORY_ITEMS = 10
@@ -100,9 +104,36 @@ class CrisisOut(BaseModel):
     note: ResourceNote
 
 
+class SourceOut(BaseModel):
+    source_title: str
+    section_title: str
+    pages: str
+    attribution: str
+    url: str
+
+    @classmethod
+    def from_chunk(cls, chunk: RetrievedChunk) -> "SourceOut":
+        return cls(
+            source_title=chunk.source_title,
+            section_title=chunk.section_title,
+            pages=format_pages(chunk.printed_pages),
+            attribution=chunk.attribution,
+            url=chunk.url,
+        )
+
+
 class ReplyOut(BaseModel):
     type: Literal["reply"] = "reply"
     message: str
+    sources: tuple[SourceOut, ...] = ()
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_sources(self, handler: Any) -> dict[str, Any]:
+        # Ungrounded replies keep the original {"type", "message"} shape.
+        data = handler(self)
+        if not data.get("sources"):
+            data.pop("sources", None)
+        return data
 
 
 def get_chat_model(request: Request) -> ChatModelPort | None:
@@ -110,11 +141,17 @@ def get_chat_model(request: Request) -> ChatModelPort | None:
     return getattr(request.app.state, "chat_model", None)
 
 
+def get_retriever(request: Request) -> RetrieverPort | None:
+    """The knowledge retriever, or ``None`` when no knowledge base is configured."""
+    return getattr(request.app.state, "retriever", None)
+
+
 @router.post("/messages", response_model=CrisisOut | ReplyOut)
 async def post_message(
     body: MessageIn,
     request: Request,
     chat_model: Annotated[ChatModelPort | None, Depends(get_chat_model)],
+    retriever: Annotated[RetrieverPort | None, Depends(get_retriever)],
 ) -> CrisisOut | ReplyOut | JSONResponse:
     decision = safe_assess(body.text)
     if decision.risk == "crisis":
@@ -122,13 +159,19 @@ async def post_message(
     if chat_model is None:
         return ReplyOut(message=COMPANION_FALLBACK)
 
+    settings = request.app.state.settings
+    references = await _retrieve(retriever, body.text, settings)
     try:
-        companion = CompanionService(
-            chat_model, timeout_seconds=request.app.state.settings.llm_timeout_seconds
+        companion = CompanionService(chat_model, timeout_seconds=settings.llm_timeout_seconds)
+        raw_reply = await companion.reply(
+            body.text, _history_messages(body.history), references=references
         )
-        reply = await companion.reply(body.text, _history_messages(body.history))
     except Exception as exc:
         logger.warning("Companion unavailable (%s); serving fallback reply.", type(exc).__name__)
+        return ReplyOut(message=COMPANION_FALLBACK)
+
+    reply, cited = resolve_citations(raw_reply, references)
+    if not reply:
         return ReplyOut(message=COMPANION_FALLBACK)
 
     # Layer 1 on the model output too: a reply that trips the lexicon, or a failed check, is
@@ -136,7 +179,24 @@ async def post_message(
     output_decision = safe_assess(reply)
     if output_decision.risk == "crisis":
         return _crisis_out(output_decision)
-    return ReplyOut(message=reply)
+    return ReplyOut(message=reply, sources=tuple(SourceOut.from_chunk(c) for c in cited))
+
+
+async def _retrieve(
+    retriever: RetrieverPort | None, text: str, settings: Any
+) -> list[RetrievedChunk]:
+    """Reference material for the reply, or none. Never fails the request; never logs text."""
+    if retriever is None:
+        return []
+    try:
+        return await asyncio.wait_for(
+            retriever.retrieve(text, settings.retrieval_k), settings.retrieval_timeout_seconds
+        )
+    except Exception as exc:
+        logger.warning(
+            "Retrieval unavailable (%s); replying without references.", type(exc).__name__
+        )
+        return []
 
 
 def _history_messages(history: tuple[HistoryItem, ...]) -> list[ChatMessage]:

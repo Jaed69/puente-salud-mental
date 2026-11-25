@@ -109,19 +109,23 @@ class IngestReport:
     embedded: int
 
 
-async def open_pool(conninfo: str, *, max_size: int = 5) -> AsyncConnectionPool:
+async def open_pool(
+    conninfo: str, *, max_size: int = 5, timeout: float = 30.0
+) -> AsyncConnectionPool:
     async def configure(conn: AsyncConnection) -> None:
         from pgvector.psycopg import register_vector_async
 
         await register_vector_async(conn)
 
     # The extension must exist before the vector type can be registered on pooled connections.
-    async with await AsyncConnection.connect(conninfo, autocommit=True) as conn:
+    async with await AsyncConnection.connect(
+        conninfo, autocommit=True, connect_timeout=max(1, int(timeout))
+    ) as conn:
         await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
     pool = AsyncConnectionPool(
         conninfo, min_size=1, max_size=max_size, configure=configure, open=False
     )
-    await pool.open(wait=True)
+    await pool.open(wait=True, timeout=timeout)
     return pool
 
 
