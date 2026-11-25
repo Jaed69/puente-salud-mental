@@ -1,7 +1,19 @@
-# Local stack for Puente: PostgreSQL + pgvector.
-#   docker compose up -d db
+# Local stack for Puente: PostgreSQL + pgvector, a one-shot knowledge ingestion and the API.
+#   docker compose up -d --build        # API on http://127.0.0.1:8000
 # Credentials here are for local development only; production uses its own secrets.
+# The companion model is configured in apps/backend/.env (see apps/backend/README.md).
 name: puente
+
+x-backend: &backend
+  build: ./apps/backend
+  image: puente-backend:local
+  environment:
+    PUENTE_DATABASE_URL: postgresql://puente:${PUENTE_DB_PASSWORD:-puente-dev}@db:5432/puente
+  env_file:
+    - path: ./apps/backend/.env
+      required: false
+  volumes:
+    - models:/models
 
 services:
   db:
@@ -22,5 +34,27 @@ services:
       timeout: 3s
       retries: 20
 
+  # Loads the committed chunks and embeds them; re-runs only embed what changed.
+  ingest:
+    <<: *backend
+    command: ["puente-knowledge", "ingest"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *backend
+    ports:
+      # Set PUENTE_API_BIND=0.0.0.0 to reach the API from a phone on the same network.
+      - "${PUENTE_API_BIND:-127.0.0.1}:${PUENTE_API_PORT:-8000}:8000"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      ingest:
+        condition: service_completed_successfully
+
 volumes:
   db-data:
+  models:
