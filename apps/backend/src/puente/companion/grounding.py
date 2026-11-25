@@ -17,11 +17,13 @@ REFERENCE_INSTRUCTIONS = (
     "reemplaza la ayuda de un profesional ni sirve para diagnosticar."
 )
 
-_MARKER = re.compile(r"\s*\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\]")
-_SPACE_BEFORE_PUNCTUATION = re.compile(r"\s+([.,;:!?)])")
+# A marker with the spaces before it, so "lento [1]." becomes "lento." and nothing else changes.
+_MARKER = re.compile(r"[ \t]*\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\]")
 
 
 def format_pages(pages: Sequence[int]) -> str:
+    if not pages:
+        return ""
     return f"{pages[0]}" if len(pages) == 1 else f"{pages[0]}-{pages[-1]}"
 
 
@@ -48,5 +50,4 @@ def resolve_citations(
                 cited.append(references[index])
     if not _MARKER.search(text):
         return text, cited
-    cleaned = _SPACE_BEFORE_PUNCTUATION.sub(r"\1", _MARKER.sub("", text))
-    return cleaned.strip(), cited
+    return _MARKER.sub("", text).strip(), cited

@@ -69,3 +69,15 @@ def test_resolve_citations_leaves_text_without_markers_untouched():
 
     assert text == "Te escucho. ¿Qué pasó hoy?"
     assert cited == []
+
+
+def test_resolve_citations_only_touches_the_markers():
+    text, _ = resolve_citations("Mira :) esto ( sí ) importa [1].\nAdemás: algo.", [KIND])
+
+    assert text == "Mira :) esto ( sí ) importa.\nAdemás: algo."
+
+
+def test_format_pages_of_an_empty_sequence_is_empty():
+    from puente.companion.grounding import format_pages
+
+    assert format_pages(()) == ""

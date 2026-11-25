@@ -10,8 +10,12 @@ cp .env.example .env   # optional
 uv run uvicorn puente.main:app --reload
 ```
 
-`GET /health` returns `{"status": "ok"}`. `GET /ready` adds the knowledge base state:
-`{"status": "ok", "knowledge": "disabled" | "ready" | "unavailable"}`.
+`GET /health` returns `{"status": "ok"}` as soon as the process serves. `GET /ready` reports the
+knowledge base: 200 `{"status": "ok", "knowledge": "disabled" | "ready"}`, or 503
+`{"status": "degraded", "knowledge": "starting" | "unavailable"}` while it connects. The knowledge
+base attaches in the background and retries with backoff (1 s up to 30 s), so the API can start
+before the database and before the embedding model is downloaded; meanwhile replies have no
+references.
 
 `POST /v1/messages` with `{"text": "...", "history": [{"role": "user"|"assistant", "text": "..."}]}`
 (`history` is optional, at most 10 items) runs the guardian (deterministic crisis lexicon,
