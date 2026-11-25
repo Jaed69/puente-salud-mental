@@ -1,0 +1,59 @@
+# Local stack for Puente: PostgreSQL + pgvector, a one-shot knowledge ingestion and the API.
+#   docker compose up -d --build        # API on http://127.0.0.1:8000
+# Credentials here are for local development only; production uses its own secrets.
+# The companion model is configured in apps/backend/.env (see apps/backend/README.md).
+name: puente
+
+x-backend: &backend
+  build: ./apps/backend
+  image: puente-backend:local
+  environment:
+    PUENTE_DATABASE_URL: postgresql://puente:${PUENTE_DB_PASSWORD:-puente-dev}@db:5432/puente
+  env_file:
+    - path: ./apps/backend/.env
+      required: false
+  volumes:
+    - models:/models
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: puente
+      POSTGRES_USER: puente
+      POSTGRES_PASSWORD: ${PUENTE_DB_PASSWORD:-puente-dev}
+    ports:
+      - "127.0.0.1:${PUENTE_DB_PORT:-5433}:5432"
+    # HNSW index builds use shared memory; Docker's 64 MB default can fail on larger corpora.
+    shm_size: 256mb
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U puente -d puente"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Loads the committed chunks and embeds them; re-runs only embed what changed.
+  ingest:
+    <<: *backend
+    command: ["puente-knowledge", "ingest"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The API does not wait for the database or the ingestion: the guardian and the crisis
+  # response must work even if they fail. The knowledge base attaches in the background and
+  # grounding starts once ingestion has loaded the chunks (GET /ready shows the state).
+  api:
+    <<: *backend
+    ports:
+      # PUENTE_API_BIND=0.0.0.0 exposes the API to the local network, for a phone in development.
+      # The API has no authentication yet: only do this on a trusted network, with synthetic data.
+      - "${PUENTE_API_BIND:-127.0.0.1}:${PUENTE_API_PORT:-8000}:8000"
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  models:

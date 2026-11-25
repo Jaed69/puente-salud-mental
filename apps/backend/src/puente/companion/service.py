@@ -8,7 +8,9 @@ guardian handles it before and after the model call.
 import asyncio
 from collections.abc import Sequence
 
+from puente.companion.grounding import build_reference_block
 from puente.companion.ports import ChatMessage, ChatModelPort
+from puente.knowledge.ports import RetrievedChunk
 
 MAX_HISTORY_MESSAGES = 10
 
@@ -40,9 +42,14 @@ class CompanionService:
         self._model = model
         self._timeout_seconds = timeout_seconds
 
-    async def reply(self, text: str, history: Sequence[ChatMessage] = ()) -> str:
+    async def reply(
+        self,
+        text: str,
+        history: Sequence[ChatMessage] = (),
+        references: Sequence[RetrievedChunk] = (),
+    ) -> str:
         """Return the companion reply or raise ``CompanionUnavailableError``."""
-        messages = build_messages(text, history)
+        messages = build_messages(text, history, references)
         try:
             raw = await asyncio.wait_for(self._model.complete(messages), self._timeout_seconds)
         except Exception as exc:
@@ -53,10 +60,16 @@ class CompanionService:
         return reply
 
 
-def build_messages(text: str, history: Sequence[ChatMessage] = ()) -> list[ChatMessage]:
+def build_messages(
+    text: str,
+    history: Sequence[ChatMessage] = (),
+    references: Sequence[RetrievedChunk] = (),
+) -> list[ChatMessage]:
     recent = list(history)[-MAX_HISTORY_MESSAGES:]
+    block = build_reference_block(references)
+    system = f"{SYSTEM_PROMPT}\n\n{block}" if block else SYSTEM_PROMPT
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         *recent,
         {"role": "user", "content": text},
     ]

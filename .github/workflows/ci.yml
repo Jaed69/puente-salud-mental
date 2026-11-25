@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/backend
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: puente
+          POSTGRES_USER: puente
+          POSTGRES_PASSWORD: puente-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U puente -d puente"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      # Integration tests use throwaway schemas in this service database.
+      PUENTE_TEST_DATABASE_URL: postgresql://puente:puente-ci@127.0.0.1:5432/puente
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      # Unit tests use fakes; no model is downloaded and no network call is made.
+      - run: uv run pytest
+
+  backend-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: docker build --tag puente-backend:ci apps/backend
+
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          # Pinned: pubspec needs Dart ^3.13.5 (Flutter >= 3.50.1); bump deliberately.
+          flutter-version: 3.50.1
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed .
+      # Infos stay visible but do not fail the build: Flutter 3.47 deprecated
+      # package:flutter/material.dart in favour of material_ui (migration pending).
+      # Errors and warnings still fail it.
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test
