@@ -9,6 +9,15 @@ human (crisis lines, community mental-health centres, psychologists) when needed
 
 [![CI](https://github.com/Jaed69/puente-salud-mental/actions/workflows/ci.yml/badge.svg)](https://github.com/Jaed69/puente-salud-mental/actions/workflows/ci.yml)
 
+## Demo: any model, Puente's guardian and knowledge
+
+Claude Code using the `puente-mcp` server. In the first scene it checks the message, searches the
+WHO guide and cites the section and pages. In the second it detects a crisis and hands over the
+Peru crisis lines. This is a replay of a real session, rendered from its transcript; only the
+tool-loading step is left out.
+
+![Claude Code calling Puente's MCP tools: a stress question answered from the WHO guide, then a crisis message answered with Peru crisis lines](docs/demo/puente-mcp-demo.gif)
+
 ## How a message flows
 
 ```text
