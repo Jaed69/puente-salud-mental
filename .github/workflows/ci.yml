@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/backend
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: puente
+          POSTGRES_USER: puente
+          POSTGRES_PASSWORD: puente-ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U puente -d puente"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      # Integration tests use throwaway schemas in this service database.
+      PUENTE_TEST_DATABASE_URL: postgresql://puente:puente-ci@127.0.0.1:5432/puente
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      # Unit tests use fakes; no model is downloaded and no network call is made.
+      - run: uv run pytest
+
+  backend-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --tag puente-backend:ci apps/backend
+
+  mobile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed .
+      - run: flutter analyze
+      - run: flutter test
