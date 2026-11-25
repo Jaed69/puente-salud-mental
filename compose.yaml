@@ -1,0 +1,26 @@
+# Local stack for Puente: PostgreSQL + pgvector.
+#   docker compose up -d db
+# Credentials here are for local development only; production uses its own secrets.
+name: puente
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: puente
+      POSTGRES_USER: puente
+      POSTGRES_PASSWORD: ${PUENTE_DB_PASSWORD:-puente-dev}
+    ports:
+      - "127.0.0.1:${PUENTE_DB_PORT:-5433}:5432"
+    # HNSW index builds use shared memory; Docker's 64 MB default can fail on larger corpora.
+    shm_size: 256mb
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U puente -d puente"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  db-data:

@@ -21,6 +21,15 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = Field(default=20.0, gt=0)
     llm_max_output_tokens: int = Field(default=300, gt=0)
 
+    # Knowledge base (PostgreSQL + pgvector). Without a database URL the companion answers without
+    # reference material. Embeddings always run locally (see puente.knowledge.embeddings).
+    database_url: SecretStr | None = None
+    embedding_model: str = "intfloat/multilingual-e5-large"
+    embedding_cache_dir: str | None = None
+    retrieval_mode: Literal["dense", "lexical", "hybrid"] = "hybrid"
+    retrieval_k: int = Field(default=4, ge=1, le=10)
+    retrieval_timeout_seconds: float = Field(default=5.0, gt=0)
+
 
 @lru_cache
 def get_settings() -> Settings:

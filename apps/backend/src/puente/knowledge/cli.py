@@ -1,23 +1,29 @@
-"""Command line for the knowledge base: ``puente-knowledge fetch|build``.
+"""Command line for the knowledge base: ``puente-knowledge fetch|build|ingest``.
 
-Run from ``apps/backend``. Paths default to the committed ``corpus/`` layout.
+Run from ``apps/backend``. Paths default to the committed ``corpus/`` layout. ``ingest`` loads the
+committed chunks into PostgreSQL (``PUENTE_DATABASE_URL``) and embeds them locally.
 """
 
 import argparse
+import asyncio
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 import httpx
 
+from puente.config import get_settings
 from puente.knowledge.corpus import (
     DWM_SOURCE,
     SourceDocument,
     build_chunks,
+    load_chunks,
     read_pdf_pages,
     verify_sha256,
     write_chunks,
 )
+from puente.knowledge.embeddings import KNOWN_MODELS, FastEmbedEmbedder, model_spec
+from puente.knowledge.store import PgKnowledgeStore, ingest, open_pool
 
 SOURCES: dict[str, SourceDocument] = {DWM_SOURCE.source_id: DWM_SOURCE}
 CORPUS_DIR = Path("corpus")
@@ -63,13 +69,53 @@ def build(source: SourceDocument, corpus_dir: Path = CORPUS_DIR) -> Path:
     return out
 
 
+async def ingest_sources(
+    database_url: str, model_names: Sequence[str], corpus_dir: Path, cache_dir: str | None
+) -> None:
+    pool = await open_pool(database_url)
+    try:
+        for name in model_names:
+            spec = model_spec(name)
+            store = PgKnowledgeStore(pool, spec)
+            await store.ensure_schema()
+            embedder = FastEmbedEmbedder(spec, cache_dir=cache_dir)
+            for source in SOURCES.values():
+                chunks = load_chunks(chunks_path(source, corpus_dir))
+                report = await ingest(store, embedder, source.source_id, chunks)
+                print(
+                    f"{source.source_id} [{spec.slug}]: {report.upserted} chunks, "
+                    f"{report.removed} removed, {report.embedded} embedded"
+                )
+    finally:
+        await pool.close()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="puente-knowledge", description=__doc__)
     parser.add_argument("--corpus-dir", type=Path, default=CORPUS_DIR)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("fetch", help="download the source PDFs and verify their SHA-256")
     commands.add_parser("build", help="extract and chunk the source PDFs into JSONL")
+    ingest_parser = commands.add_parser("ingest", help="load the chunks into PostgreSQL")
+    models = ingest_parser.add_mutually_exclusive_group()
+    models.add_argument("--model", help="embedding model (default: PUENTE_EMBEDDING_MODEL)")
+    models.add_argument("--all-models", action="store_true", help="index every known model")
     args = parser.parse_args(argv)
+
+    if args.command == "ingest":
+        settings = get_settings()
+        if settings.database_url is None:
+            parser.error("PUENTE_DATABASE_URL is not set")
+        names = list(KNOWN_MODELS) if args.all_models else [args.model or settings.embedding_model]
+        asyncio.run(
+            ingest_sources(
+                settings.database_url.get_secret_value(),
+                names,
+                args.corpus_dir,
+                settings.embedding_cache_dir,
+            )
+        )
+        return 0
 
     for source in SOURCES.values():
         if args.command == "fetch":
