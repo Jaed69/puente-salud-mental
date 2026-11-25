@@ -14,10 +14,12 @@ dependencies = [
     "psycopg-pool>=3.2",
     "pgvector>=0.4",
     "fastembed>=0.9",
+    "mcp>=2.3.0",
 ]
 
 [project.scripts]
 puente-knowledge = "puente.knowledge.cli:main"
+puente-mcp = "puente.mcp_server:main"
 
 [dependency-groups]
 dev = [
