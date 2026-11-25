@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     # reference material. Embeddings always run locally (see puente.knowledge.embeddings).
     database_url: SecretStr | None = None
     database_connect_timeout: float = Field(default=10.0, gt=0)
-    embedding_model: str = "intfloat/multilingual-e5-large"
+    # Chosen by eval/reports/retrieval-2026-11-24.md (best MRR and Hit@k in hybrid mode).
+    embedding_model: str = "jinaai/jina-embeddings-v2-base-es"
     embedding_cache_dir: str | None = None
     retrieval_mode: Literal["dense", "lexical", "hybrid"] = "hybrid"
     retrieval_k: int = Field(default=4, ge=1, le=10)

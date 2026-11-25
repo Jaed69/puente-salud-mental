@@ -77,3 +77,12 @@ def test_registry_slugs_are_unique_and_dimensions_fit_hnsw():
 def test_spec_rejects_unsafe_slugs(slug):
     with pytest.raises(ValueError, match="invalid embedding model slug"):
         EmbeddingModelSpec("some/model", slug, 8)
+
+
+def test_default_embedding_model_is_the_evaluated_winner_and_registered():
+    from puente.config import Settings
+
+    default = Settings(_env_file=None).embedding_model
+
+    assert default == "jinaai/jina-embeddings-v2-base-es"
+    assert default in KNOWN_MODELS

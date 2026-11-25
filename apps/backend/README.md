@@ -68,11 +68,23 @@ uv run puente-knowledge build                # optional: rebuild corpus/chunks f
 uv run puente-knowledge ingest               # load the chunks and embed them
 ```
 
-The first `ingest` and the first API start download the embedding model (about 2 GB for the
-default). Settings: `PUENTE_DATABASE_URL`, `PUENTE_EMBEDDING_MODEL`, `PUENTE_EMBEDDING_CACHE_DIR`,
+The first `ingest` and the first API start download the embedding model (about 0.6 GB for the
+default, `jinaai/jina-embeddings-v2-base-es`, chosen by the evaluation below). Settings: `PUENTE_DATABASE_URL`, `PUENTE_EMBEDDING_MODEL`, `PUENTE_EMBEDDING_CACHE_DIR`,
 `PUENTE_RETRIEVAL_MODE` (`hybrid`, `dense` or `lexical`), `PUENTE_RETRIEVAL_K` (default 4),
 `PUENTE_RETRIEVAL_TIMEOUT_SECONDS` (default 5) and `PUENTE_DATABASE_CONNECT_TIMEOUT` (default 10).
 Without `PUENTE_DATABASE_URL`, or with the database down, the API answers without references.
+
+### Retrieval evaluation
+
+`eval/retrieval_questions.jsonl` holds 60 colloquial Peruvian Spanish questions labelled with the
+book pages that answer them. With every model indexed (`puente-knowledge ingest --all-models`):
+
+```sh
+uv run puente-knowledge eval     # writes eval/reports/retrieval-<date>.md
+```
+
+Latest run: `eval/reports/retrieval-2026-11-24.md` (hybrid jina-v2-base-es: Hit@5 0.82,
+MRR 0.618).
 
 ## Test and lint
 

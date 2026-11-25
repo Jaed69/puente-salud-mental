@@ -1,13 +1,17 @@
-"""Command line for the knowledge base: ``puente-knowledge fetch|build|ingest``.
+"""Command line for the knowledge base: ``puente-knowledge fetch|build|ingest|eval``.
 
 Run from ``apps/backend``. Paths default to the committed ``corpus/`` layout. ``ingest`` loads the
-committed chunks into PostgreSQL (``PUENTE_DATABASE_URL``) and embeds them locally.
+committed chunks into PostgreSQL (``PUENTE_DATABASE_URL``) and embeds them locally. ``eval`` scores
+every indexed model and retrieval mode on ``eval/retrieval_questions.jsonl`` and writes a report.
 """
 
 import argparse
 import asyncio
+import statistics
 import sys
+import time
 from collections.abc import Sequence
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -23,10 +27,22 @@ from puente.knowledge.corpus import (
     write_chunks,
 )
 from puente.knowledge.embeddings import KNOWN_MODELS, FastEmbedEmbedder, model_spec
+from puente.knowledge.evaluation import (
+    DEFAULT_KS,
+    Summary,
+    load_questions,
+    relevant_chunk_ids,
+    render_report,
+    score_ranking,
+    summarize,
+)
+from puente.knowledge.retriever import KnowledgeRetriever
 from puente.knowledge.store import PgKnowledgeStore, ingest, open_pool
 
 SOURCES: dict[str, SourceDocument] = {DWM_SOURCE.source_id: DWM_SOURCE}
 CORPUS_DIR = Path("corpus")
+QUESTIONS_PATH = Path("eval/retrieval_questions.jsonl")
+REPORTS_DIR = Path("eval/reports")
 
 
 def raw_path(source: SourceDocument, corpus_dir: Path = CORPUS_DIR) -> Path:
@@ -90,6 +106,59 @@ async def ingest_sources(
         await pool.close()
 
 
+async def evaluate(
+    database_url: str,
+    model_names: Sequence[str],
+    questions_path: Path,
+    corpus_dir: Path,
+    cache_dir: str | None,
+) -> str:
+    """Score each model in dense and hybrid mode, and lexical search once (it uses no model)."""
+    questions = load_questions(questions_path)
+    chunk_pages = {
+        chunk.chunk_id: chunk.printed_pages
+        for source in SOURCES.values()
+        for chunk in load_chunks(chunks_path(source, corpus_dir))
+    }
+    relevant = {q.question_id: relevant_chunk_ids(q, chunk_pages) for q in questions}
+    unanswerable = [qid for qid, ids in relevant.items() if not ids]
+    if unanswerable:
+        raise ValueError(f"questions with no relevant chunk: {', '.join(unanswerable)}")
+
+    results: dict[tuple[str, str], Summary] = {}
+    latency: dict[tuple[str, str], float] = {}
+    pool = await open_pool(database_url)
+    try:
+        for index, name in enumerate(model_names):
+            spec = model_spec(name)
+            embedder = FastEmbedEmbedder(spec, cache_dir=cache_dir)
+            await embedder.warm_up()
+            store = PgKnowledgeStore(pool, spec)
+            modes = ("dense", "hybrid", "lexical") if index == 0 else ("dense", "hybrid")
+            for mode in modes:
+                retriever = KnowledgeRetriever(embedder, store, mode=mode)
+                scores, timings = [], []
+                for question in questions:
+                    started = time.perf_counter()
+                    ranked = await retriever.retrieve(question.question, max(DEFAULT_KS))
+                    timings.append((time.perf_counter() - started) * 1000)
+                    ids = [chunk.chunk_id for chunk in ranked]
+                    scores.append(score_ranking(ids, relevant[question.question_id]))
+                key = ("(none)" if mode == "lexical" else name, mode)
+                results[key] = summarize(scores)
+                latency[key] = statistics.median(timings)
+                print(f"{key[0]} {mode}: MRR {results[key].mrr:.3f}")
+    finally:
+        await pool.close()
+    context = (
+        f"Run {date.today().isoformat()} on {len(chunk_pages)} chunks and {len(questions)} "
+        f"questions (`{questions_path}`). Questions are colloquial Peruvian Spanish written and "
+        "labelled by the assistant, not reviewed by clinicians. Latency includes the local query "
+        "embedding on CPU."
+    )
+    return render_report(results, latency_ms=latency, context=context)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="puente-knowledge", description=__doc__)
     parser.add_argument("--corpus-dir", type=Path, default=CORPUS_DIR)
@@ -100,7 +169,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     models = ingest_parser.add_mutually_exclusive_group()
     models.add_argument("--model", help="embedding model (default: PUENTE_EMBEDDING_MODEL)")
     models.add_argument("--all-models", action="store_true", help="index every known model")
+    eval_parser = commands.add_parser("eval", help="score retrieval on the labelled questions")
+    eval_parser.add_argument("--questions", type=Path, default=QUESTIONS_PATH)
+    eval_parser.add_argument("--out", type=Path, help="report path (default: eval/reports/)")
     args = parser.parse_args(argv)
+
+    if args.command == "eval":
+        settings = get_settings()
+        if settings.database_url is None:
+            parser.error("PUENTE_DATABASE_URL is not set")
+        report = asyncio.run(
+            evaluate(
+                settings.database_url.get_secret_value(),
+                list(KNOWN_MODELS),
+                args.questions,
+                args.corpus_dir,
+                settings.embedding_cache_dir,
+            )
+        )
+        out = args.out or REPORTS_DIR / f"retrieval-{date.today().isoformat()}.md"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(report, encoding="utf-8")
+        print(f"report -> {out}")
+        return 0
 
     if args.command == "ingest":
         settings = get_settings()
