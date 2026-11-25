@@ -24,3 +24,6 @@ build/
 Thumbs.db
 .idea/
 .vscode/
+
+# Corpus sources (downloaded and hash-checked by `puente-knowledge fetch`)
+apps/backend/corpus/raw/
